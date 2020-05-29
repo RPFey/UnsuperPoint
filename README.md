@@ -5,3 +5,6 @@
 &ensp;&ensp;该项目通过复现该算法最终达到了使经过仿射变换或者透视变换的图片最终可以进行矫正的效果，应用于本人实习公司的智能作业批阅系统的对上传的图片进行矫正的部分，所展示代码为包装完整应用于完整的系统之前的成型的demo.    
 &ensp;&ensp;本人负责论文的初步学习，模型框架的搭建，和损失函数的第一版编写及部分优化三部分工作。
 ## 以下为该项目的效果展示图：
+<img src="https://github.com/lydproject/UnSuperPoint_Project/tree/master/img/img1">
+<img src="https://github.com/lydproject/UnSuperPoint_Project/tree/master/img/img2">
+<img src="https://github.com/lydproject/UnSuperPoint_Project/tree/master/img/img3">
