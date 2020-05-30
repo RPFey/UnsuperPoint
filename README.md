@@ -1,5 +1,5 @@
 # UnSuperPoint论文复现DEMO
-## 项目时间：2019.11-2019.2（由本人所在的三人项目团队共同完成）
+## 项目时间：2019.11-2020.2（由本人所在的三人项目团队共同完成）
 ## 项目介绍：
 &ensp;&ensp;1.这是一个关于图片矫正算法一篇未开源论文UnSuperPoint的复现的项目，该篇论文的链接：<https://arxiv.org/abs/1907.04011v1>  
 
@@ -7,7 +7,7 @@
 
 &ensp;&ensp;3.本人负责论文的初步学习，模型框架的搭建，和损失函数的第一版编写及部分优化三部分工作。
 ## 以下为该项目的效果展示图：
-&ensp;&ensp;每张图片从右到左分别为原图片，经过变换后待矫正的图片，矫正后的图片（若图片不能正常显示可点击图片或进入img文件夹查看）  
+&ensp;&ensp;每张图片从右到左分别为原图片，经过变换后待矫正的图片，矫正后的图片（若图片不能正常显示可能由于网络连接原因，可选择稍后再尝试访问或者更换浏览器）  
 <img src="https://github.com/lydproject/UnSuperPoint_Project/blob/master/img/img1.jpg">  
 <img src="https://github.com/lydproject/UnSuperPoint_Project/blob/master/img/img2.jpg">  
 <img src="https://github.com/lydproject/UnSuperPoint_Project/blob/master/img/img3.jpg">  
