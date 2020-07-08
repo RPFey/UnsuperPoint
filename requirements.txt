@@ -1,0 +1,5 @@
+torch 
+torchvision
+tensorboardX
+numpy
+opencv-python

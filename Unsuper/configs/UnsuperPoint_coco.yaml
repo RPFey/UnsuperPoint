@@ -1,0 +1,25 @@
+data:
+    name: 'COCODataset'
+    validation_size: 0.2
+    homographic:
+        translation: 
+            range: [-10, 10]
+            var: 1.0
+        rotation: 30
+        scale: 0.3
+        patch_ratio: 0.85
+        allow_artifacts: true
+    perspective: 0.1
+    IMAGE_SHAPE: [240, 380]
+
+
+MODEL:
+    OPTIMAZATION:
+        name: 'adam'
+        LR: 0.0001
+        weight_decay: 0.00001
+        decay_step_list: [0.7, 0.9]
+        LR_decay: 0.1
+        LR_clip: 0.0000001
+
+        LR_warmup: False

@@ -1,195 +1,6 @@
-import os
-import random
-
-import numpy as np
-from PIL import Image
-import cv2
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset
-from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader
-import torchvision.transforms as T 
-import torch.optim as optim
-
-
-class config():
-    perspective = 0.1
-    IMAGE_SHAPE = (320,240)
-    scale = 0.3
-    rot = 30
-
-transform = T.Compose([
-        T.ColorJitter(brightness=0.2, contrast=0.2, hue=0.2),
-        T.ToTensor(),
-        T.Normalize([0.5,0.5,0.5],[0.225,0.225,0.225])
-        ])
-
-transform_test = T.Compose([
-        T.ToTensor(),
-        T.Normalize([0.5,0.5,0.5],[0.225,0.225,0.225])
-        ])
-
-class Picture(Dataset):
-    def __init__(self,root,transforms=None,train=True):
-        self.train = train
-        images = os.listdir(root)
-        self.images = [os.path.join(root,image) for image in images if image.endswith('.jpg')]
-        self.transforms = transforms        
-    def __getitem__(self,index):
-        image_path = self.images[index]
-        # print(image_path)
-        cv_image = cv2.imread(image_path)
-        # print(cv_image.shape,image_path)
-        # cv_image = Image.fromarray(cv2.cvtColor(cv_image,cv2.COLOR_BGR2RGB))
-        re_img = Myresize(cv_image)
-        # re_img = cv2.resize(cv_image,(config.IMAGE_SHAPE[1],
-        # config.IMAGE_SHAPE[0]))
-        # re_img = transform_handle(cv_image)
-        # re_img = cv2.cvtColor(np.asarray(re_img),cv2.COLOR_RGB2BGR)
-        tran_img, tran_mat = EnhanceData(re_img)
-	
-        # cv2.imwrite('re_+' + str(index) +'.jpg',re_img)
-        # cv2.imwrite('tran_'+ str(index) +'.jpg',tran_img)
-        if self.transforms:
-            re_img = Image.fromarray(cv2.cvtColor(re_img,cv2.COLOR_BGR2RGB))
-            source_img = transform_test(re_img)
-            tran_img = Image.fromarray(cv2.cvtColor(tran_img,cv2.COLOR_BGR2RGB))
-            des_img = self.transforms(tran_img)
-        # else:
-        #     re_img = Image.fromarray(cv2.cvtColor(re_img,cv2.COLOR_BGR2RGB))
-        #     tran_img = Image.fromarray(cv2.cvtColor(tran_img,cv2.COLOR_BGR2RGB))
-        #     image_array1 = np.asarray(re_img)
-        #     image_array2 = np.asarray(tran_img)
-        #     source_img = torch.from_numpy(image_array1)
-        #     des_img = torch.from_numpy(image_array2)
-        # if self.train:
-        return source_img,des_img,tran_mat
-        # else:
-            # return source_img,des_img,tran_mat
-            
-    def __len__(self):
-        return len(self.images)
-
-def Myresize(img):
-    # print(img.shape)
-    h,w = img.shape[:2]
-    if h < config.IMAGE_SHAPE[0] or w < config.IMAGE_SHAPE[1]:
-        new_h = config.IMAGE_SHAPE[0]
-        new_w = config.IMAGE_SHAPE[1]
-        h = new_h
-        w = new_w
-        img = cv2.resize(img,(new_w, new_h))
-        
-    new_h, new_w = config.IMAGE_SHAPE
-    try:
-        top = np.random.randint(0, h - new_h + 1)
-        left = np.random.randint(0, w - new_w + 1)
-    except:
-        print(h,new_h,w,new_w)
-        raise 
-    img = img[top: top + new_h,
-                          left: left + new_w] # crop image
-    return img
-
-
-# def sp_noise(image,prob=0.2):
-#     '''
-#     添加椒盐噪声
-#     prob:噪声比例 
-#     '''
-#     output = np.zeros(image.shape,np.uint8)
-#     thres = 1 - prob 
-#     for i in range(image.shape[0]):
-#         for j in range(image.shape[1]):
-#             rdn = random.random()
-#             if rdn < prob:
-#                 output[i][j] = 0
-#             elif rdn > thres:
-#                 output[i][j] = 255
-#             else:
-#                 output[i][j] = image[i][j]
-#     return output
-
-def gasuss_noise(image, mean=0, var=0.001):
-    ''' 
-        添加高斯噪声
-        mean : 均值 
-        var : 方差
-    '''
-    image = np.array(image/255, dtype=float)
-    noise = np.random.normal(mean, var ** 0.5, image.shape)
-    out = image + noise
-    if out.min() < 0:
-        low_clip = -1.
-    else:
-        low_clip = 0.
-    out = np.clip(out, low_clip, 1.0)
-    out = np.uint8(out*255)
-    #cv.imshow("gasuss", out)
-    return out
-
-def EnhanceData(img):
-    seed = random.randint(1,20)
-    src_point =np.array( [(0,0),
-         (config.IMAGE_SHAPE[1]-1, 0),
-         (0, config.IMAGE_SHAPE[0]-1),
-         (config.IMAGE_SHAPE[1]-1, config.IMAGE_SHAPE[0]-1)
-                ], dtype = 'float32')
-
-    dst_point = get_dst_point()
-    center = (config.IMAGE_SHAPE[1]/2, config.IMAGE_SHAPE[0]/2)
-    rot = random.randint(-2,2)*config.rot + random.randint(0,15)
-    scale = 1.2 - config.scale*random.random()
-    RS_mat = cv2.getRotationMatrix2D(center, rot, scale)
-    f_point = np.matmul(dst_point, RS_mat.T).astype('float32')
-    mat = cv2.getPerspectiveTransform(src_point, f_point)
-    out_img = cv2.warpPerspective(img, mat,(config.IMAGE_SHAPE[1],config.IMAGE_SHAPE[0]))
-    if seed > 10 and seed <= 15:
-        out_img = cv2.GaussianBlur(out_img, (3, 3),sigmaX=0)
-    return out_img,mat
-
-def get_dst_point():
-    a = random.random()
-    b = random.random()
-    c = random.random()
-    d = random.random()
-    e = random.random()
-    f = random.random()
-
-    if random.random() > 0.5:
-        left_top_x = config.perspective*a
-        left_top_y = config.perspective*b
-        right_top_x = 0.9+config.perspective*c
-        right_top_y = config.perspective*d
-        left_bottom_x  = config.perspective*a
-        left_bottom_y  = 0.9 + config.perspective*e
-        right_bottom_x = 0.9 + config.perspective*c
-        right_bottom_y = 0.9 + config.perspective*f
-    else:
-        left_top_x = config.perspective*a
-        left_top_y = config.perspective*b
-        right_top_x = 0.9+config.perspective*c
-        right_top_y = config.perspective*d
-        left_bottom_x  = config.perspective*e
-        left_bottom_y  = 0.9 + config.perspective*b
-        right_bottom_x = 0.9 + config.perspective*f
-        right_bottom_y = 0.9 + config.perspective*d
-
-    # left_top_x = config.perspective*random.random()
-    # left_top_y = config.perspective*random.random()
-    # right_top_x = 0.9+config.perspective*random.random()
-    # right_top_y = config.perspective*random.random()
-    # left_bottom_x  = config.perspective*random.random()
-    # left_bottom_y  = 0.9 + config.perspective*random.random()
-    # right_bottom_x = 0.9 + config.perspective*random.random()
-    # right_bottom_y = 0.9 + config.perspective*random.random()
-
-    dst_point = np.array([(config.IMAGE_SHAPE[1]*left_top_x,config.IMAGE_SHAPE[0]*left_top_y,1),
-            (config.IMAGE_SHAPE[1]*right_top_x, config.IMAGE_SHAPE[0]*right_top_y,1),
-            (config.IMAGE_SHAPE[1]*left_bottom_x,config.IMAGE_SHAPE[0]*left_bottom_y,1),
-            (config.IMAGE_SHAPE[1]*right_bottom_x,config.IMAGE_SHAPE[0]*right_bottom_y,1)],dtype = 'float32')
-    return dst_point
+from .model_base import ModelTemplate
 
 class UnSuperPoint(nn.Module):
     def __init__(self):
@@ -366,7 +177,7 @@ class UnSuperPoint(nn.Module):
     def get_point_pair(self, G, As, Bs):
         self.correspond = 4
         A2B_min_Id = torch.argmin(G,dim=1)
-#        A2B_min_d = torch.min(G,dim=1)
+        #A2B_min_d = torch.min(G,dim=1)
         M = len(A2B_min_Id)
         Id = G[list(range(M)),A2B_min_Id] > self.correspond
         reshape_As = As.reshape(-1)
@@ -469,7 +280,7 @@ class UnSuperPoint(nn.Module):
         point_size = 1
         def random_color():
             return (random.randint(0,255), random.randint(0,255),random.randint(0,255))
-#        point_color = (0, 0, 255) # BGR
+        #point_color = (0, 0, 255) BGR
         thickness = 4 # 可以为 0 、4、8
         print(len(map))
 
@@ -484,12 +295,12 @@ class UnSuperPoint(nn.Module):
                    
         cv2.imwrite('可视化_z.jpg',img)
         
-#        img = cv2.imread(srcpath)
-#        map = points1
-#        points_list = [(int(map[i,0]),int(map[i,1])) for i in range(len(map))]
-#        print(points_list)
-#        for point in points_list:
-#            cv2.circle(img , point, point_size, point_color, thickness)
+#       img = cv2.imread(srcpath)
+#       map = points1
+#       points_list = [(int(map[i,0]),int(map[i,1])) for i in range(len(map))]
+#       print(points_list)
+#       for point in points_list:
+#           cv2.circle(img , point, point_size, point_color, thickness)
         cv2.imwrite('可视化_dst.jpg',img_dst)
         print(points1)
         print(points2)
@@ -547,76 +358,3 @@ class UnSuperPoint(nn.Module):
 
         # Id = torch.zeros_like(A2B_nearest, dtype=torch.uint8)
         # for i in range(len(A2B_nearest)):
-def simple_train():
-    batch_size = 1
-    epochs = 1  
-    learning_rate = 0.0001
-    dataset = Picture('/home/administrator/桌面/unsuperpoint/a',transform)
-    trainloader = DataLoader(dataset, batch_size=batch_size, num_workers=4, 
-                         shuffle=True, drop_last=True)
-    model = UnSuperPoint()
-    model.train()
-    dev = torch.device("cuda") if torch.cuda.is_available() else torch.device('cpu')
-    model.to(dev)
-    optimizer = optim.SGD(model.parameters(),lr=learning_rate, momentum=0.9)
-    for epoch in range(1,epochs+1):
-        e = 0
-        for batch_idx, (img0, img1, mat) in enumerate(trainloader):
-            # print(img0.shape,img1.shape)
-            img0 = img0.to(dev)
-            img1 = img1.to(dev)
-            mat = mat.squeeze()
-            mat = mat.to(dev)                     
-            optimizer.zero_grad()
-            s1,p1,d1 = model(img0)
-            s2,p2,d2 = model(img1)
-            # print(s1.shape[2],s2.shape,p1.shape,p2.shape,d1.shape,d2.shape,mat.shape)
-            loss = model.UnSuperPointLoss(s1,p1,d1,s2,p2,d2,mat)
-            loss.backward()
-            optimizer.step()
-            e += loss.item()
-            # if batch_idx % 10 == 9:
-            print('Train Epoch: {} [{}/{} ]\t Loss: {:.6f}'.format(epoch, batch_idx * len(img0), len(trainloader.dataset),e))
-            e = 0
-    torch.save(model.state_dict(),'/home/administrator/桌面/unsuperpoint_allre8.pkl')
-
-if __name__ == '__main__':
-    modul = UnSuperPoint()
-    modul.load_state_dict(torch.load('/home/ldl/桌面/project/UnSuperPoint/unsuperpoint_allre8.pkl'))
-    modul.to(modul.dev)
-    modul.train(False)
-    with torch.no_grad():
-        srcpath = '/home/ldl/deep-high-resolution-net.pytorch-master/data/coco/images/src.jpg'
-        transformpath = '/home/ldl/deep-high-resolution-net.pytorch-master/data/coco/images/test_3.jpg'
-        modul.predict(srcpath, transformpath)
-
-        # transformimg = cv2.imread(transformpath)
-        # transformimg_copy = Image.fromarray(cv2.cvtColor(transformimg,cv2.COLOR_BGR2RGB))
-        # transformimg_copy = transform_test(transformimg_copy)
-
-        # transformimg_copy = torch.unsqueeze(transformimg_copy,0)
-        # transformimg_copy = transformimg_copy.to(modul.dev)
-        # _,Ap,Ad = modul.forward(transformimg_copy)
-        # map = modul.get_position(Ap[0])
-        # map = map.reshape((2,-1)).permute(1,0)
-        # print(map)
-        # map = map.cpu().numpy()
-        # map = np.round(map)
-
-
-        # point_size = 1
-        # point_color = (0, 0, 255) # BGR
-        # thickness = 4 # 可以为 0 、4、8
-        # print(len(map))
-
-        # # 要画的点的坐标
-        # points_list = [(int(map[i,0]),int(map[i,1])) for i in range(len(map))]
-        # print(points_list)
-        # for point in points_list:
-        #     cv2.circle(transformimg , point, point_size, point_color, thickness)
-        # cv2.imwrite('可视化_.jpg',transformimg)
-        
-
-
-
-

@@ -1,0 +1,2 @@
+DATA_PATH = 'Data'
+EXPER_PATH = 'Exp'
