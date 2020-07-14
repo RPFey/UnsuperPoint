@@ -1,12 +1,14 @@
 import numpy as np
+import cv2
 import collections
 import random
+import torch
 
 def resize_img(img, IMAGE_SHAPE):
     h,w = img.shape[:2]
     if h < IMAGE_SHAPE[0] or w < IMAGE_SHAPE[1]:
-        new_h = config.IMAGE_SHAPE[0]
-        new_w = config.IMAGE_SHAPE[1]
+        new_h = IMAGE_SHAPE[0]
+        new_w = IMAGE_SHAPE[1]
         h = new_h
         w = new_w
         img = cv2.resize(img,(new_w, new_h))
@@ -74,7 +76,7 @@ def get_dst_point(perspective, IMAGE_SHAPE):
     return dst_point
 
 def enhance(img, config):
-    IMAGE_SHAPE = configp['IMAGE_SHAPE']
+    IMAGE_SHAPE = config['IMAGE_SHAPE']
     seed = random.randint(1,20)
     src_point = np.array([[               0,                0],
                           [IMAGE_SHAPE[1]-1,                0],
@@ -93,3 +95,32 @@ def enhance(img, config):
         out_img = cv2.GaussianBlur(out_img, (3, 3), sigmaX=0)
     return out_img, mat
 
+def get_position(Pmap, cell, downsample=1, flag=None, mat=None):
+    """
+        calculate the position of key points
+        transform from image A to image B
+
+        Pmap : position map (2, H, W) (X_position, Y_position)
+        flag : denote whether it's map A or map B
+        mat : transformation matrix
+    """
+    res = torch.zeros_like(Pmap).cuda()
+    res = (cell + Pmap) * downsample
+
+    if flag == 'A':
+        # print(mat.shape)
+        r = torch.zeros_like(res)
+        Denominator = res[0,:,:]*mat[2,0] + res[1,:,:]*mat[2,1] + mat[2,2]
+        r[0,:,:] = (res[0,:,:]*mat[0,0] + 
+            res[1,:,:]*mat[0,1] +mat[0,2]) / Denominator 
+        r[1,:,:] = (res[0,:,:]*mat[1,0] + 
+            res[1,:,:]*mat[1,1] +mat[1,2]) / Denominator
+        return r
+    else:
+        return res
+
+if __name__=='__main__':
+    # test get position
+    position_map = torch.randn((2, 37, 48)).cuda()
+    matrix = torch.randn((3,3)).cuda()
+    get_position(position_map, 8, 'A', mat=matrix)

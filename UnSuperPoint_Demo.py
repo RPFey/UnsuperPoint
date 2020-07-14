@@ -280,11 +280,11 @@ class UnSuperPoint(nn.Module):
 
     def loss(self, bath_As, bath_Ap, bath_Ad, 
         bath_Bs, bath_Bp, bath_Bd, mat):
-        loss = 0
+        loss = torch.tensor(0.).cuda()
         bath = bath_As.shape[0]
         for i in range(bath):
             loss += self.UnSuperPointLoss(bath_As[i], bath_Ap[i], bath_Ad[i], 
-        bath_Bs[i], bath_Bp[i], bath_Bd[i],mat[i])
+        bath_Bs[i], bath_Bp[i], bath_Bd[i], mat[i])
         return loss / bath
 
     def UnSuperPointLoss(self, As, Ap, Ad, Bs, Bp, Bd, mat):

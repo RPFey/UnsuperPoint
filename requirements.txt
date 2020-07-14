@@ -1,5 +1,7 @@
-torch 
-torchvision
+torch==1.4
+torchvision==0.5
 tensorboardX
 numpy
 opencv-python
+easydict
+tqdm

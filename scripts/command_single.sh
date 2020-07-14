@@ -1,0 +1,1 @@
+python train.py --cfg_file Unsuper/configs/UnsuperPoint_coco.yaml --workers 4 --batch_size 16 --epochs 80

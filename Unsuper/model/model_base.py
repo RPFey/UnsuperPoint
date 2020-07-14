@@ -3,7 +3,7 @@ import os
 import torch.nn as nn
 
 class ModelTemplate(nn.Module):
-    def __init__():
+    def __init__(self):
         super().__init__()
     
     def load_params_from_file(self, filename, logger, to_cpu=False):
