@@ -85,13 +85,12 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
         model.train()
         optimizer.zero_grad()
 
-        pred_dict, loss = model(img0, img1, mat)
+        loss = model(img0, img1, mat)
 
         loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg['GRAD_NORM_CLIP'])
         optimizer.step()
         
-
         accumulated_iter += 1
         disp_dict.update({'loss': loss.item(), 'lr': cur_lr})
 

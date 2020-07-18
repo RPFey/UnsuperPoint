@@ -6,28 +6,41 @@ from pathlib import Path
 import random
 
 from .base_dataset import BaseDataset
-from Unsuper.settings import DATA_PATH, EXPER_PATH
+from Unsuper.settings import DATA_PATH
 from ..utils.utils import resize_img, enhance
 
 
 class COCODataset(BaseDataset):
     default_config = {}
 
-    def _init_dataset(self, config):
-        base_path = Path(DATA_PATH, 'COCO/train2014/')
-        image_paths = list(base_path.iterdir())
-        image_paths = [str(p) for p in image_paths]
-        random.shuffle(image_paths)
-        data_len = len(image_paths)
-        train_files = image_paths[ : round( data_len * (1 - config['validation_size']) )]
-        return round(train_files), train_files
+    def _init_dataset(self):
+        self.name = 'coco'
+        if self.is_training:
+            base_path = Path(DATA_PATH, 'COCO/train2014/')
+            image_paths = list(base_path.iterdir())
+            image_paths = [str(p) for p in image_paths]
+            np.random.shuffle(image_paths)
+            data_len = len(image_paths)
+            if self.config['truncate']:
+                image_paths = image_paths[:round(data_len*self.config['truncate'])]
+            return len(image_paths), image_paths
+        else:
+            base_path = Path(DATA_PATH, 'COCO/val2014/')
+            image_paths = list(base_path.iterdir())
+            test_files = [str(p) for p in image_paths][:self.config['export_size']]
+            return self.config['export_size'], test_files
     
     def __getitem__(self, index):
         img_file = self.train_files[index]
         img = cv2.imread(img_file)
         src_img = resize_img(img, self.config['IMAGE_SHAPE'])  # reshape the image
-        dst_img, mat = enhance(img, self.config)
-        return src_img, dst_img, mat
+        if self.is_training:
+            src_img = resize_img(img, self.config['IMAGE_SHAPE'])  # reshape the image
+            dst_img, mat = enhance(src_img, self.config)
+            return src_img, dst_img, mat, img_file
+        else:
+            return src_img, img_file
+        
 
     def collate_batch(*batches):
         src_img = []
@@ -43,3 +56,14 @@ class COCODataset(BaseDataset):
         mat = mat
 
         return src_img.permute(0, 3, 1, 2), dst_img.permute(0, 3, 1, 2), mat
+    
+    def test_collate_batch(*batches):
+        src_img = []
+        img_idx = []
+        for batch in batches[1]:
+            src_img.append(batch[0])
+            img_idx.append(batch[1])
+        src_img_tensor = torch.tensor(src_img, dtype=torch.float32) # B * H * W * C
+
+        return src_img, src_img_tensor.permute(0, 3, 1, 2), img_idx
+

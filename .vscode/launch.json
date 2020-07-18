@@ -8,19 +8,34 @@
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
+            "program": "${workspaceFolder}/export.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "args":[
+                "--cfg_file","Unsuper/configs/UnsuperPoint_coco.yaml",
+                "--workers","1",
+                "--eval_all",
+                "--extra_tag", "correct_error"
+            ] 
+        },
+        {
+            "name": "train debug",
+            "type": "python",
+            "request": "launch",
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "args":[
                 "--cfg_file","Unsuper/configs/UnsuperPoint_coco.yaml",
-                "--workers","1"
+                "--workers","1",
+                "--extra_tag", "test"
             ] 
         },
         {
             "name": "Debug utils",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/train_utils.py",
+            "program": "${workspaceFolder}/Unsuper/utils/utils.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "args":[

@@ -1,24 +1,28 @@
 data:
-    name: 'COCODataset'
-    validation_size: 0.2
+    train_name: 'COCODataset'
+    export_name: 'HPatchDataset'
+    truncate: 0.6
+    export_size: 320
     homographic:
         translation: 
             range: [-10, 10]
             var: 1.0
-        rotation: 30
-        scale: 0.3
+        rotation: 15
+        scale: 0.2
         patch_ratio: 0.85
         allow_artifacts: true
     perspective: 0.1
-    IMAGE_SHAPE: [240, 384]
+    IMAGE_SHAPE: [240, 320]
 
 
 MODEL:
+    name: 'UnsuperPoint'
+    L2_norm: True
     OPTIMIZATION:
         name: 'adam'
         LR: 0.001
         weight_decay: 0.00001
-        decay_step_list: [0.7, 0.9]
+        decay_step_list: [0.6, 0.8]
         LR_decay: 0.1
         LR_clip: 0.000001
         LR_warmup: False
@@ -26,8 +30,11 @@ MODEL:
     LOSS:
         usp: 1
         uni_xy: 100
-        desc: 0.001
-        decorr: 0.03
+        desc: 0.01
+        decorr: 0.06
+        des_key: 1
+    dis_th: 0.8
+    score_th: 0.7
     downsample: 8
     correspond: 4
     position_weight: 1.0

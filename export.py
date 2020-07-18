@@ -3,16 +3,18 @@ import torch
 from tensorboardX import SummaryWriter
 import time
 import glob
+import tqdm
 import re
+import cv2
+import numpy as np
 import datetime
 import argparse
 from pathlib import Path
 import torch.distributed as dist
-from Unsuper.datasets import build_dataloader
-from Unsuper.models import build_network
+from Unsuper.dataset import build_dataloader
+from Unsuper.model import build_network
 from Unsuper.utils import common_utils
 from Unsuper.config import cfg, cfg_from_list, cfg_from_yaml_file, log_config_to_file
-from eval_utils import eval_utils
 
 
 def parse_config():
@@ -23,14 +25,8 @@ def parse_config():
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
-    parser.add_argument('--mgpus', action='store_true', default=False, help='whether to use multiple gpu')
-    parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
-    parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
-    parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
     parser.add_argument('--set', dest='set_cfgs', default=None, nargs=argparse.REMAINDER,
                         help='set extra config keys if needed')
-
-    parser.add_argument('--max_waiting_mins', type=int, default=30, help='max waiting minutes')
     parser.add_argument('--start_epoch', type=int, default=0, help='')
     parser.add_argument('--eval_tag', type=str, default='default', help='eval tag for this experiment')
     parser.add_argument('--eval_all', action='store_true', default=False, help='whether to evaluate all checkpoints')
@@ -47,6 +43,46 @@ def parse_config():
 
     return args, cfg
 
+def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, result_dir=None):
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info('*************** EPOCH %s EVALUATION *****************' % epoch_id)
+    model.eval()
+    iter_step = len(dataloader)
+    dataloader_iter = iter(dataloader)
+    
+    progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
+    for i in range(iter_step):
+        try:
+            img0, img0_tensor, imgidx = next(dataloader_iter)
+        except StopIteration:
+            break
+
+        h, w = img0[0].shape[:2]
+
+        img0_tensor = img0_tensor.cuda()
+        pred_dict = model.predict(img0_tensor)
+        for j in pred_dict.keys():
+            suffix = imgidx[j][imgidx[j].rfind('.'):]
+            img_path = Path(imgidx[j])
+            folder = img_path.parent.stem
+            img_name = img_path.stem
+            data_dir = result_dir / cfg['data']['export_name'] / folder
+            data_dir.mkdir(parents=True, exist_ok=True)
+
+            cv2.imwrite(os.path.join(str(data_dir), img_name+suffix), img0[j])
+            s1 = pred_dict[j]['s1']
+            loc = np.where(s1 > 0)
+            p1 = pred_dict[j]['p1'][loc]
+            d1 = pred_dict[j]['d1'][loc]
+            s1 = s1[loc]
+            np.savez(open(os.path.join(str(data_dir), img_name+'.ppm.Unsuper'+epoch_id), 'wb'), scores=s1, keypoints=p1, descriptors=d1, imsize=(h, w))
+
+        progress_bar.update()
+
+    logger.info('Result is save to %s' % result_dir)
+    logger.info('****************Evaluation done.*****************')
+
 
 def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=False):
     # load checkpoint
@@ -54,87 +90,40 @@ def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id
     model.cuda()
 
     # start evaluation
-    eval_utils.eval_one_epoch(
+    eval_one_epoch(
         cfg, model, test_loader, epoch_id, logger, dist_test=dist_test,
         result_dir=eval_output_dir, save_to_file=args.save_to_file
     )
 
+def repeat_eval_ckpt(cfg, model, test_loader, args, eval_output_dir, logger, ckpt_dir, dist_test=False):
 
-def get_no_evaluated_ckpt(ckpt_dir, ckpt_record_file, args):
+    # tensorboard log
+    # tb_log = SummaryWriter(log_dir=str(eval_output_dir / ('tensorboard_%s' % cfg.DATA_CONFIG.DATA_SPLIT['test'])))
     ckpt_list = glob.glob(os.path.join(ckpt_dir, '*checkpoint_epoch_*.pth'))
     ckpt_list.sort(key=os.path.getmtime)
-    evaluated_ckpt_list = [float(x.strip()) for x in open(ckpt_record_file, 'r').readlines()]
-
     for cur_ckpt in ckpt_list:
+
         num_list = re.findall('checkpoint_epoch_(.*).pth', cur_ckpt)
         if num_list.__len__() == 0:
             continue
-
         epoch_id = num_list[-1]
-        if 'optim' in epoch_id:
-            continue
-        if float(epoch_id) not in evaluated_ckpt_list and int(float(epoch_id)) >= args.start_epoch:
-            return epoch_id, cur_ckpt
-    return -1, None
-
-
-def repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir, dist_test=False):
-    # evaluated ckpt record
-    ckpt_record_file = eval_output_dir / ('eval_list_%s.txt' % cfg.DATA_CONFIG.DATA_SPLIT['test'])
-    with open(ckpt_record_file, 'a'):
-        pass
-
-    # tensorboard log
-    if cfg.LOCAL_RANK == 0:
-        tb_log = SummaryWriter(log_dir=str(eval_output_dir / ('tensorboard_%s' % cfg.DATA_CONFIG.DATA_SPLIT['test'])))
-    total_time = 0
-    first_eval = True
-
-    while True:
-        # check whether there is checkpoint which is not evaluated
-        cur_epoch_id, cur_ckpt = get_no_evaluated_ckpt(ckpt_dir, ckpt_record_file, args)
-        if cur_epoch_id == -1 or int(float(cur_epoch_id)) < args.start_epoch:
-            wait_second = 30
-            print('Wait %s seconds for next check (progress: %.1f / %d minutes): %s \r'
-                  % (wait_second, total_time * 1.0 / 60, args.max_waiting_mins, ckpt_dir), end='', flush=True)
-            time.sleep(wait_second)
-            total_time += 30
-            if total_time > args.max_waiting_mins * 60 and (first_eval is False):
-                break
-            continue
-
-        total_time = 0
-        first_eval = False
 
         model.load_params_from_file(filename=cur_ckpt, logger=logger, to_cpu=dist_test)
         model.cuda()
 
         # start evaluation
-        cur_result_dir = eval_output_dir / ('epoch_%s' % cur_epoch_id) / cfg.DATA_CONFIG.DATA_SPLIT['test']
-        tb_dict = eval_utils.eval_one_epoch(
-            cfg, model, test_loader, cur_epoch_id, logger, dist_test=dist_test,
-            result_dir=cur_result_dir, save_to_file=args.save_to_file
+        cur_result_dir = eval_output_dir / ('epoch_%s' % epoch_id)
+        eval_one_epoch(
+            cfg, model, test_loader, epoch_id, logger, dist_test=dist_test,
+            result_dir=cur_result_dir
         )
 
-        if cfg.LOCAL_RANK == 0:
-            for key, val in tb_dict.items():
-                tb_log.add_scalar(key, val, cur_epoch_id)
-
-        # record this epoch which has been evaluated
-        with open(ckpt_record_file, 'a') as f:
-            print('%s' % cur_epoch_id, file=f)
-        logger.info('Epoch %s has been evaluated' % cur_epoch_id)
+        logger.info('Epoch %s has been evaluated' % epoch_id)
 
 
 def main():
+    dist_test = False
     args, cfg = parse_config()
-    if args.launcher == 'none':
-        dist_test = False
-    else:
-        args.batch_size, cfg.LOCAL_RANK = getattr(common_utils, 'init_dist_%s' % args.launcher)(
-            args.batch_size, args.tcp_port, args.local_rank, backend='nccl'
-        )
-        dist_test = True
 
     output_dir = cfg.ROOT_DIR / 'output' / cfg.TAG / args.extra_tag
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -144,7 +133,7 @@ def main():
     if not args.eval_all:
         num_list = re.findall(r'\d+', args.ckpt) if args.ckpt is not None else []
         epoch_id = num_list[-1] if num_list.__len__() > 0 else 'no_number'
-        eval_output_dir = eval_output_dir / ('epoch_%s' % epoch_id) / cfg.DATA_CONFIG.DATA_SPLIT['test']
+        eval_output_dir = eval_output_dir / ('epoch_%s' % epoch_id) / 'test'
     else:
         eval_output_dir = eval_output_dir / 'eval_all_default'
 
@@ -153,16 +142,13 @@ def main():
 
     eval_output_dir.mkdir(parents=True, exist_ok=True)
     log_file = eval_output_dir / ('log_eval_%s.txt' % datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
-    logger = common_utils.create_logger(log_file, rank=cfg.LOCAL_RANK)
+    logger = common_utils.create_logger(log_file)
 
     # log to file
     logger.info('**********************Start logging**********************')
     gpu_list = os.environ['CUDA_VISIBLE_DEVICES'] if 'CUDA_VISIBLE_DEVICES' in os.environ.keys() else 'ALL'
     logger.info('CUDA_VISIBLE_DEVICES=%s' % gpu_list)
 
-    if dist_test:
-        total_gpus = dist.get_world_size()
-        logger.info('total_batch_size: %d' % (total_gpus * args.batch_size))
     for key, val in vars(args).items():
         logger.info('{:16} {}'.format(key, val))
     log_config_to_file(cfg, logger=logger)
@@ -170,15 +156,15 @@ def main():
     ckpt_dir = args.ckpt_dir if args.ckpt_dir is not None else output_dir / 'ckpt'
 
     test_set, test_loader, sampler = build_dataloader(
-        dataset_cfg=cfg.['data'],
+        dataset_cfg=cfg['data'],
         batch_size=args.batch_size,
         dist=dist_test, workers=args.workers, logger=logger, training=False
     )
 
-    model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=test_set)
+    model = build_network(cfg['MODEL'], cfg['data']['IMAGE_SHAPE'], False)
     with torch.no_grad():
         if args.eval_all:
-            repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir, dist_test=dist_test)
+            repeat_eval_ckpt(cfg, model, test_loader, args, eval_output_dir, logger, ckpt_dir, dist_test=dist_test)
         else:
             eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=dist_test)
 

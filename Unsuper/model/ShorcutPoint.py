@@ -4,9 +4,9 @@ from .model_base import ModelTemplate
 from ..utils.utils import get_position
 import torch.nn.functional as F
 
-class UnSuperPoint(ModelTemplate):
+class ShortcutPoint(ModelTemplate):
     def __init__(self, model_config, IMAGE_SHAPE, training=True):
-        super(UnSuperPoint, self).__init__()
+        super(ShortcutPoint, self).__init__()
         self.training = training
 
         self.downsample = model_config['downsample']
@@ -35,27 +35,27 @@ class UnSuperPoint(ModelTemplate):
         # export threshold
         self.score_th = model_config['score_th']
 
-        self.cnn = nn.Sequential(
+        self.cnn1 = nn.Sequential(
             nn.Conv2d(3,32,3,1,padding=1),
             nn.BatchNorm2d(32),
             nn.LeakyReLU(inplace=True),
 
             nn.Conv2d(32,32,3,1,padding=1),
             nn.BatchNorm2d(32),
-            nn.LeakyReLU(inplace=True),
+            nn.LeakyReLU(inplace=True))
 
-            nn.MaxPool2d(2,2),
+        self.pool = nn.MaxPool2d(2,2)
 
+        self.cnn2 = nn.Sequential(
             nn.Conv2d(32,64,3,1,padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(inplace=True),
 
             nn.Conv2d(64,64,3,1,padding=1),
             nn.BatchNorm2d(64),
-            nn.LeakyReLU(inplace=True),
-
-            nn.MaxPool2d(2,2),
+            nn.LeakyReLU(inplace=True))
             
+        self.cnn3 = nn.Sequential(
             nn.Conv2d(64,128,3,1,padding=1),
             nn.BatchNorm2d(128),
             nn.LeakyReLU(inplace=True),
@@ -65,7 +65,7 @@ class UnSuperPoint(ModelTemplate):
             nn.LeakyReLU(inplace=True),
 
             nn.MaxPool2d(2,2),
-            
+
             nn.Conv2d(128,256,3,1,padding=1),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(inplace=True),
@@ -76,21 +76,21 @@ class UnSuperPoint(ModelTemplate):
         )
 
         self.score = nn.Sequential(
-            nn.Conv2d(256,256,3,1,padding=1),
+            nn.Conv2d(352,256,3,1,padding=1),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(inplace=True), 
             nn.Conv2d(256,1,3,1,padding=1),
             nn.Sigmoid()
         )
         self.position = nn.Sequential(
-            nn.Conv2d(256,256,3,1,padding=1),
+            nn.Conv2d(352,256,3,1,padding=1),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(inplace=True), 
             nn.Conv2d(256,2,3,1,padding=1),
             nn.Sigmoid()
         )
         self.descriptor = nn.Sequential(
-            nn.Conv2d(256,256,3,1,padding=1),
+            nn.Conv2d(352,256,3,1,padding=1),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(inplace=True), 
             nn.Conv2d(256, 256,3,1,padding=1)
@@ -123,13 +123,21 @@ class UnSuperPoint(ModelTemplate):
         return output_dict
 
     def forward_prop(self, x):
-        h,w = x.shape[-2:]
+        n, c, h, w = x.shape
         self.h = h
         self.w = w
-        output = self.cnn(x)
-        s = self.score(output)
-        p = self.position(output)
-        d = self.descriptor(output)
+        layer1 = self.cnn1(x) # 32 channels
+        layer2 = self.cnn2(self.pool(layer1)) # 64 channels
+
+        layer3 = self.cnn3(self.pool(layer2))
+        h_new, w_new = layer3.shape[-2:]
+        layer1 = nn.functional.interpolate(layer1, size=[h_new, w_new])
+        layer2 = nn.functional.interpolate(layer2, size=[h_new, w_new])
+        layer3 = torch.cat([layer1, layer2, layer3], axis=1)
+
+        s = self.score(layer3)
+        p = self.position(layer3)
+        d = self.descriptor(layer3)
         desc = self.interpolate(p, d, h, w) # (B, C, H, W)
         if self.L2_norm:
             desc_2 = torch.sqrt(torch.sum(desc**2, dim=1, keepdim=True))

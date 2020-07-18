@@ -1,0 +1,28 @@
+data:
+    name: 'HPatchDataset'
+    IMAGE_SHAPE: [400, 640]
+
+
+MODEL:
+    OPTIMIZATION:
+        name: 'adam'
+        LR: 0.001
+        weight_decay: 0.00001
+        decay_step_list: [0.7, 0.9]
+        LR_decay: 0.1
+        LR_clip: 0.000001
+        LR_warmup: False
+        GRAD_NORM_CLIP: 10
+    LOSS:
+        usp: 1
+        uni_xy: 100
+        desc: 0.001
+        decorr: 0.03
+    score_th: 0.7
+    downsample: 8
+    correspond: 4
+    position_weight: 1.0
+    score_weight: 2.0
+    m_p: 1
+    m_n: 0.2
+    d: 250

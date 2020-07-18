@@ -1,0 +1,1 @@
+python export.py --cfg_file Unsuper/configs/UnsuperPoint_coco.yaml --workers 4 --batch_size 16 --eval_all --extra_tag L2_norm

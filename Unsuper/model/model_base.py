@@ -65,5 +65,3 @@ class ModelTemplate(nn.Module):
         logger.info('==> Done')
 
         return it, epoch
-
-    
