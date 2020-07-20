@@ -1,1 +1,1 @@
-nohup python -u -m torch.distributed.launch --nproc_per_node=2 train.py --launcher pytorch --cfg_file Unsuper/configs/UnsuperPoint_coco.yaml --workers 4 --batch_size 48 --epochs 80 >train.log 2>&1 &
+nohup python -u -m torch.distributed.launch --nproc_per_node=2 train.py --launcher pytorch --cfg_file Unsuper/configs/UnsuperPoint_coco.yaml --workers 4 --batch_size 48 --epochs 40 >train.log 2>&1 &
