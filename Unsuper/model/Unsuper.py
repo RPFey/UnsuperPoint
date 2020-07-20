@@ -3,6 +3,7 @@ import torch.nn as nn
 from .model_base import ModelTemplate
 from ..utils.utils import get_position
 import torch.nn.functional as F
+import numpy as np
 
 class UnSuperPoint(ModelTemplate):
     def __init__(self, model_config, IMAGE_SHAPE, training=True):
@@ -100,8 +101,8 @@ class UnSuperPoint(ModelTemplate):
         s1,p1,d1 = self.forward_prop(img0)
         s2,p2,d2 = self.forward_prop(img1)
 
-        loss = self.loss(s1,p1,d1,s2,p2,d2,mat)
-        return loss
+        loss, loss_item = self.loss(s1,p1,d1,s2,p2,d2,mat)
+        return loss, loss_item
     
     def predict(self, img0):
         s1,p1,d1 = self.forward_prop(img0)
@@ -149,40 +150,64 @@ class UnSuperPoint(ModelTemplate):
     def loss(self, batch_As, batch_Ap, batch_Ad, batch_Bs, batch_Bp, batch_Bd, mat):
         loss = 0
         batch = batch_As.shape[0]
+        loss_batch_array = np.zeros((5, ))
         for i in range(batch):
-            loss += self.UnSuperPointLoss(batch_As[i], batch_Ap[i], batch_Ad[i], 
-        batch_Bs[i], batch_Bp[i], batch_Bd[i],mat[i])
-        return loss / batch
+            loss_batch, loss_item = self.UnSuperPointLoss(batch_As[i], batch_Ap[i], batch_Ad[i], 
+                                                          batch_Bs[i], batch_Bp[i], batch_Bd[i],mat[i])
+            loss += loss_batch
+            loss_batch_array += loss_item
+        return loss / batch, loss_batch_array / batch
 
     def UnSuperPointLoss(self, As, Ap, Ad, Bs, Bp, Bd, mat):
         position_A = get_position(Ap, self.cell, self.downsample, flag='A', mat=mat)
         position_B = get_position(Bp, self.cell, self.downsample, flag='B', mat=None)
-        G = self.getG(position_A,position_B)
+        G = self.getG(position_A, position_B)
         batch_loss = 0
+        loss_item = []
 
         if self.usp > 0:
             Usploss = self.usploss(As, Bs, mat, G)
             batch_loss += self.usp * Usploss
+            loss_item.append(Usploss.item())
+        else:
+            loss_item.append(0.)
 
         if self.uni_xy > 0:
             Uni_xyloss = self.uni_xyloss(Ap, Bp)
             batch_loss += self.uni_xy * Uni_xyloss
+            loss_item.append(Uni_xyloss.item())
+        else:
+            loss_item.append(0.)
         
         if self.desc > 0:
-            Descloss = self.descloss(Ad, Bd, G)
+            As_reshape = As.reshape(-1) > self.score_th
+            Bs_reshape = Bs.reshape(-1) > self.score_th
+            As_reshape = As_reshape.float().unsqueeze(1)
+            Bs_reshape = Bs_reshape.float().unsqueeze(0)
+            score_map = As_reshape.mul(Bs_reshape)
+            Descloss = self.descloss(Ad, Bd, G, score_map)
             batch_loss += Descloss
+            loss_item.append(Descloss.item())
+        else:
+            loss_item.append(0.)
         
         if self.decorr > 0:
             Decorrloss = self.decorrloss(Ad, Bd)
             batch_loss += Decorrloss
+            loss_item.append(Decorrloss.item())
+        else:
+            loss_item.append(0.)
 
         if self.des_key > 0:
             des_key_A = self.desc_key_loss(As, Ad)
             des_key_B = self.desc_key_loss(Bs, Bd)
             des_key_loss = des_key_A + des_key_B
             batch_loss += des_key_loss
+            loss_item.append(des_key_loss.item())
+        else:
+            loss_item.append(0.)
 
-        return batch_loss
+        return batch_loss, np.array(loss_item)
 
     def desc_key_loss(self, As, Ad):
         '''
@@ -193,6 +218,7 @@ class UnSuperPoint(ModelTemplate):
         '''
 
         As_reshape = As.reshape(-1) # HW
+        M = As_reshape.shape[0]
         c = Ad.shape[0]
         Ad_reshape = Ad.reshape((c, -1)).permute(1,0) # (HW) * C
         if not self.L2_norm:            
@@ -203,9 +229,16 @@ class UnSuperPoint(ModelTemplate):
         distance = length.unsqueeze(1) - 2 * torch.matmul(Ad_reshape, Ad_reshape.transpose(0,1)) + length.unsqueeze(0)
         match = torch.argsort(distance, dim=1, descending=False)
         close_id = match[:, 1]
-        close_dis = distance[list(range(M)) : close_id]
+        close_dis = distance[list(range(M)) , close_id]
         tar = (close_dis > self.dis_th).float()
-        return F.binary_cross_entropy(As_reshape, tar)
+        if torch.sum(tar) / As_reshape.shape[0] > self.kp_ratio:
+            return F.binary_cross_entropy(As_reshape, tar)
+        else:
+            nearst_ids = torch.argsort(close_dis, descending=True)
+            mini_points = int(As_reshape.shape[0] * self.kp_ratio)
+            nearst_ids = nearst_ids[:mini_points]
+            tar[nearst_ids] = 1.
+            return F.binary_cross_entropy(As_reshape, tar)
 
 
     def usploss(self, As, Bs, mat, G):      
@@ -275,7 +308,7 @@ class UnSuperPoint(ModelTemplate):
         M = len(position)
         return torch.mean(torch.pow(position - (i-1) / (M-1),2))
 
-    def descloss(self, DA, DB, G):
+    def descloss(self, DA, DB, G, score_map):
         c, h, w = DA.shape
         # reshape_DA size = M, 256
         reshape_DA = DA.reshape((c,-1)).permute(1,0)
@@ -288,7 +321,7 @@ class UnSuperPoint(ModelTemplate):
         AB[C_] -= self.m_n
         Id = AB < 0
         AB[Id] = 0.0
-        return torch.mean(AB)
+        return torch.mean(AB * score_map)
 
     def decorrloss(self, DA, DB):
         c, h, w = DA.shape

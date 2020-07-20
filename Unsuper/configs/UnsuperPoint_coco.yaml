@@ -9,10 +9,8 @@ data:
             var: 1.0
         rotation: 15
         scale: 0.2
-        patch_ratio: 0.85
-        allow_artifacts: true
     perspective: 0.1
-    IMAGE_SHAPE: [240, 320]
+    IMAGE_SHAPE: [480, 640]
 
 
 MODEL:
@@ -34,7 +32,7 @@ MODEL:
         decorr: 0.06
         des_key: 1
     dis_th: 0.8
-    score_th: 0.7
+    score_th: 0.5
     downsample: 8
     correspond: 4
     position_weight: 1.0

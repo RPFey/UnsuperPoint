@@ -121,6 +121,22 @@ def get_position(Pmap, cell, downsample=1, flag=None, mat=None):
 
 if __name__=='__main__':
     # test get position
-    position_map = torch.randn((2, 37, 48)).cuda()
-    matrix = torch.randn((3,3)).cuda()
-    get_position(position_map, 8, 'A', mat=matrix)
+    img = cv2.imread('COCO_train2014_000000291797.jpg')
+    src_img = resize_img(img,[240,320])
+    config = {
+        'IMAGE_SHAPE': [240,320],
+        'homographic': {'rotation': 10, 'scale': 0.1},
+        'perspective': 0.1 }
+    dist_img, mat = enhance(src_img, config)
+    point = np.array([100, 100], dtype=np.float32)
+    r = np.zeros((2, ))
+    cv2.circle(src_img, center=(100, 100), radius=3, color=(255,0,0), thickness=-1)
+    Denominator = point[0]*mat[2,0] + point[1]*mat[2,1] + mat[2,2]
+    r[0] = (point[0]*mat[0,0] + 
+            point[0]*mat[0,1] +mat[0,2]) / Denominator
+    r[1] = (point[1]*mat[1,0] + 
+            point[1]*mat[1,1] +mat[1,2]) / Denominator
+    r = r.astype(np.int32)
+    cv2.circle(dist_img, center=(r[0], r[1]), radius=3, color=(255,0,0), thickness=-1)
+    cv2.imwrite('scr.jpg', src_img)
+    cv2.imwrite('dist.jpg', dist_img)

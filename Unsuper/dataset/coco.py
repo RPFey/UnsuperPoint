@@ -33,12 +33,12 @@ class COCODataset(BaseDataset):
     def __getitem__(self, index):
         img_file = self.train_files[index]
         img = cv2.imread(img_file)
-        src_img = resize_img(img, self.config['IMAGE_SHAPE'])  # reshape the image
         if self.is_training:
             src_img = resize_img(img, self.config['IMAGE_SHAPE'])  # reshape the image
             dst_img, mat = enhance(src_img, self.config)
             return src_img, dst_img, mat, img_file
         else:
+            src_img = cv2.resize(img, (self.config['IMAGE_SHAPE'][1], self.config['IMAGE_SHAPE'][0]))
             return src_img, img_file
         
 

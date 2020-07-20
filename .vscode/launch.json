@@ -15,7 +15,7 @@
                 "--cfg_file","Unsuper/configs/UnsuperPoint_coco.yaml",
                 "--workers","1",
                 "--eval_all",
-                "--extra_tag", "correct_error"
+                "--extra_tag", "L2_norm"
             ] 
         },
         {

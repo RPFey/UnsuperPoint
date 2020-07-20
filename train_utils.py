@@ -6,6 +6,12 @@ from torch.nn.utils import clip_grad_norm_
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_sched
 import torchvision
+import numpy as np
+import matplotlib.pyplot as plt
+
+names = ['usp', 'uni_xy', 'desc', 'decorr', 'des_key']
+colors = ['black', 'orange', 'red', 'red', 'blue']
+linestyles = ['-', '-', '-', '--', '-']
 
 def build_optimizer(model, optim_config):
     if optim_config['name'] == 'adam':
@@ -54,6 +60,7 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
         pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
 
     disp_dict = {}
+    loss_step = np.zeros((5, 1))
     for cur_it in range(total_it_each_epoch):
         try:
             img0, img1, mat = next(dataloader_iter)
@@ -85,7 +92,8 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
         model.train()
         optimizer.zero_grad()
 
-        loss = model(img0, img1, mat)
+        loss, loss_item = model(img0, img1, mat)
+        loss_step = np.concatenate([loss_step, loss_item[:, np.newaxis]], dim=1)
 
         loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg['GRAD_NORM_CLIP'])
@@ -107,7 +115,7 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
     lr_scheduler.step()
     if rank == 0:
         pbar.close()
-    return accumulated_iter
+    return accumulated_iter, loss_step[:, 1:]
 
 
 def train_model(model, optimizer, train_loader, lr_scheduler, optim_cfg,
@@ -126,7 +134,7 @@ def train_model(model, optimizer, train_loader, lr_scheduler, optim_cfg,
                 cur_scheduler = lr_warmup_scheduler
             else:
                 cur_scheduler = lr_scheduler
-            accumulated_iter = train_one_epoch(
+            accumulated_iter, loss_step = train_one_epoch(
                 model, optimizer, train_loader,
                 lr_scheduler=cur_scheduler,
                 accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,
@@ -152,6 +160,13 @@ def train_model(model, optimizer, train_loader, lr_scheduler, optim_cfg,
                     checkpoint_state(model, optimizer, trained_epoch, accumulated_iter), filename=ckpt_name,
                 )
 
+                # plot loss of each step in this epoch
+                output_dir = ckpt_save_dir.parent / 'loss_step'
+                output_dir.mkdir(parents=True, exist_ok=True)
+                plt.figure()
+                for name, color, linestyle, loss in zip(names, colors, linestyles, loss_step):
+                    plt.plot(np.arange(loss.shape[0]), loss, color=color, ls=linestyle, label=name)
+                plt.savefig(str(output_dir)+'/epoch %d.jpg'%(trained_epoch))
 
 def model_state_to_cpu(model_state):
     model_state_cpu = type(model_state)()  # ordered dict
