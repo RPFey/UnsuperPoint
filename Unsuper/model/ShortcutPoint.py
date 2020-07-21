@@ -3,6 +3,7 @@ import torch.nn as nn
 from .model_base import ModelTemplate
 from ..utils.utils import get_position
 import torch.nn.functional as F
+import numpy as np
 
 class ShortcutPoint(ModelTemplate):
     def __init__(self, model_config, IMAGE_SHAPE, training=True):
@@ -79,29 +80,26 @@ class ShortcutPoint(ModelTemplate):
             nn.Conv2d(352,256,3,1,padding=1),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(inplace=True), 
-            nn.Conv2d(256,1,3,1,padding=1),
+            nn.Conv2d(256, 64, 3,1,padding=1),
             nn.Sigmoid()
         )
         self.position = nn.Sequential(
-            nn.Conv2d(352,256,3,1,padding=1),
+            nn.Conv2d(352, 256, 3, 1, padding=1),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(inplace=True), 
-            nn.Conv2d(256,2,3,1,padding=1),
+            nn.Conv2d(256, 2, 3, 1,padding=1),
             nn.Sigmoid()
         )
         self.descriptor = nn.Sequential(
-            nn.Conv2d(352,256,3,1,padding=1),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(inplace=True), 
-            nn.Conv2d(256, 256,3,1,padding=1)
+            nn.Conv2d(352, 256, 1, 1, padding=0)
         )
 
     def forward(self, img0, img1=None, mat=None):
-        s1,p1,d1 = self.forward_prop(img0)
-        s2,p2,d2 = self.forward_prop(img1)
+        s1, p1, d1 = self.forward_prop(img0)
+        s2, p2, d2 = self.forward_prop(img1)
 
-        loss = self.loss(s1,p1,d1,s2,p2,d2,mat)
-        return loss
+        loss, loss_item = self.loss(s1, p1, d1, s2, p2, d2, mat)
+        return loss, loss_item
     
     def predict(self, img0):
         s1,p1,d1 = self.forward_prop(img0)
@@ -131,18 +129,19 @@ class ShortcutPoint(ModelTemplate):
 
         layer3 = self.cnn3(self.pool(layer2))
         h_new, w_new = layer3.shape[-2:]
-        layer1 = nn.functional.interpolate(layer1, size=[h_new, w_new])
-        layer2 = nn.functional.interpolate(layer2, size=[h_new, w_new])
-        layer3 = torch.cat([layer1, layer2, layer3], axis=1)
+        layer1_down = nn.functional.interpolate(layer1, size=[h_new, w_new])
+        layer2_down = nn.functional.interpolate(layer2, size=[h_new, w_new])
+        layer3_down = torch.cat([layer1_down, layer2_down, layer3], axis=1)
 
-        s = self.score(layer3)
-        p = self.position(layer3)
-        d = self.descriptor(layer3)
-        desc = self.interpolate(p, d, h, w) # (B, C, H, W)
+        s = self.score(layer3_down)
+        s = torch.nn.functional.pixel_shuffle(s, 8)
+        p = self.position(layer3_down)
+        d = self.descriptor(layer3_down)
+        # desc = self.interpolate(p, d, h, w) # (B, C, H, W)
         if self.L2_norm:
-            desc_2 = torch.sqrt(torch.sum(desc**2, dim=1, keepdim=True))
-            desc = desc / desc_2 
-        return s,p,desc
+            desc_2 = torch.sqrt(torch.sum(d**2, dim=1, keepdim=True))
+            d = d / desc_2
+        return s, p, d
 
     def interpolate(self, p, d, h, w):
         # b, c, h, w
@@ -150,47 +149,91 @@ class ShortcutPoint(ModelTemplate):
         samp_pts = self.get_batch_position(p)
         samp_pts[:, 0, :, :] = (samp_pts[:, 0, :, :] / (float(self.w)/2.)) - 1.
         samp_pts[:, 1, :, :] = (samp_pts[:, 1, :, :] / (float(self.h)/2.)) - 1.
-        samp_pts = samp_pts.permute(0,2,3,1)
+        samp_pts = samp_pts.permute(0, 2, 3, 1)
         desc = torch.nn.functional.grid_sample(d, samp_pts)
         return desc
 
     def loss(self, batch_As, batch_Ap, batch_Ad, batch_Bs, batch_Bp, batch_Bd, mat):
         loss = 0
         batch = batch_As.shape[0]
+        loss_batch_array = np.zeros((6,))
+
+        # calculate peaky loss
+        peaky_loss = self.peaky_loss(batch_As, batch_Bs)
+        loss += peaky_loss
+
+        # select the maximum score in the region
+        batch_As = F.max_pool2d(batch_As, kernel_size=(8,8), stride=8)
+        batch_Bs = F.max_pool2d(batch_Bs, kernel_size=(8, 8), stride=8)
+
         for i in range(batch):
-            loss += self.UnSuperPointLoss(batch_As[i], batch_Ap[i], batch_Ad[i], 
-        batch_Bs[i], batch_Bp[i], batch_Bd[i],mat[i])
-        return loss / batch
+            loss_batch, loss_item = self.UnSuperPointLoss(batch_As[i], batch_Ap[i], batch_Ad[i],
+                                                          batch_Bs[i], batch_Bp[i], batch_Bd[i], mat[i])
+            loss += loss_batch
+            loss_batch_array += np.append(loss_item, peaky_loss.item())
+        return loss / batch, loss_batch_array / batch
 
     def UnSuperPointLoss(self, As, Ap, Ad, Bs, Bp, Bd, mat):
         position_A = get_position(Ap, self.cell, self.downsample, flag='A', mat=mat)
         position_B = get_position(Bp, self.cell, self.downsample, flag='B', mat=None)
-        G = self.getG(position_A,position_B)
+        G = self.getG(position_A, position_B)
         batch_loss = 0
+        loss_item = []
 
         if self.usp > 0:
             Usploss = self.usploss(As, Bs, mat, G)
             batch_loss += self.usp * Usploss
+            loss_item.append(Usploss.item())
+        else:
+            loss_item.append(0.)
 
         if self.uni_xy > 0:
             Uni_xyloss = self.uni_xyloss(Ap, Bp)
             batch_loss += self.uni_xy * Uni_xyloss
-        
+            loss_item.append(Uni_xyloss.item())
+        else:
+            loss_item.append(0.)
+
         if self.desc > 0:
+            # As_reshape = As.reshape(-1) > self.score_th
+            # Bs_reshape = Bs.reshape(-1) > self.score_th
+            # As_reshape = As_reshape.float().unsqueeze(1)
+            # Bs_reshape = Bs_reshape.float().unsqueeze(0)
+            # score_map = As_reshape.mul(Bs_reshape)
             Descloss = self.descloss(Ad, Bd, G)
-            batch_loss += Descloss
-        
+            batch_loss += self.desc * Descloss
+            loss_item.append(Descloss.item())
+        else:
+            loss_item.append(0.)
+
         if self.decorr > 0:
             Decorrloss = self.decorrloss(Ad, Bd)
-            batch_loss += Decorrloss
+            batch_loss += self.decorr * Decorrloss
+            loss_item.append(Decorrloss.item())
+        else:
+            loss_item.append(0.)
 
         if self.des_key > 0:
             des_key_A = self.desc_key_loss(As, Ad)
             des_key_B = self.desc_key_loss(Bs, Bd)
             des_key_loss = des_key_A + des_key_B
-            batch_loss += des_key_loss
+            batch_loss += self.des_key * des_key_loss
+            loss_item.append(des_key_loss.item())
+        else:
+            loss_item.append(0.)
 
-        return batch_loss
+        return batch_loss, np.array(loss_item)
+
+    def peaky_loss(self, As, Bs):
+        As_reshape = F.unfold(As, kernel_size=(8,8), stride=(8,8)) # B * ( 1 * 64) * (L)
+        Bs_reshape = F.unfold(Bs, kernel_size=(8,8), stride=(8,8)) # B * ( 1 * 64) * (L)
+
+        peaky_A = 1 - torch.mean(torch.max(As_reshape, dim=1)[0] - torch.mean(As_reshape, dim=1))
+        peaky_B = 1 - torch.mean(torch.max(Bs_reshape, dim=1)[0] - torch.mean(Bs_reshape, dim=1))
+
+        return peaky_A + peaky_B
+
+
 
     def desc_key_loss(self, As, Ad):
         '''
@@ -200,20 +243,20 @@ class ShortcutPoint(ModelTemplate):
             Ad : descriptor for each point (C * H * W)
         '''
 
-        As_reshape = As.reshape(-1) # HW
+        As_reshape = As.reshape(-1)  # HW
+        M = As_reshape.shape[0]
         c = Ad.shape[0]
-        Ad_reshape = Ad.reshape((c, -1)).permute(1,0) # (HW) * C
-        if not self.L2_norm:            
-            length = torch.sum(Ad_reshape ** 2, dim=1)
-        else:
-            HW = Ad_reshape.shape[0]
-            length = torch.ones(HW).cuda()
-        distance = length.unsqueeze(1) - 2 * torch.matmul(Ad_reshape, Ad_reshape.transpose(0,1)) + length.unsqueeze(0)
+        Ad_reshape = Ad.reshape((c, -1)).permute(1, 0)  # (HW) * C
+        distance = 1 - torch.matmul(Ad_reshape, Ad_reshape.transpose(0, 1))
         match = torch.argsort(distance, dim=1, descending=False)
-        close_id = match[:, 1]
-        close_dis = distance[list(range(M)) : close_id]
-        tar = (close_dis > self.dis_th).float()
-        return F.binary_cross_entropy(As_reshape, tar)
+        close_id = match[:, -1]
+        close_distance = distance[list(range(M)), close_id]  # add 1 bias
+        prob = close_distance / close_distance.max()
+        if prob.min() > self.dis_th:
+            prob = torch.ones((prob.shape[0],)).cuda() * 1e-3
+        else:
+            prob = prob.detach()
+        return F.binary_cross_entropy(As_reshape, prob)
 
 
     def usploss(self, As, Bs, mat, G):      
@@ -222,9 +265,8 @@ class ShortcutPoint(ModelTemplate):
         # print(reshape_As_k.shape,reshape_Bs_k.shape,d_k.shape)
         positionK_loss = torch.mean(d_k)
         scoreK_loss = torch.mean(torch.pow(reshape_As_k - reshape_Bs_k, 2))
-        uspK_loss = self.get_uspK_loss(d_k, reshape_As_k, reshape_Bs_k)        
         return (self.position_weight * positionK_loss + 
-            self.score_weight * scoreK_loss + uspK_loss)
+            self.score_weight * scoreK_loss)
 
     def get_batch_position(self, Pamp):
         grid = self.cell.unsqueeze(0)

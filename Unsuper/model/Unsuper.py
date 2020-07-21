@@ -221,25 +221,15 @@ class UnSuperPoint(ModelTemplate):
         M = As_reshape.shape[0]
         c = Ad.shape[0]
         Ad_reshape = Ad.reshape((c, -1)).permute(1,0) # (HW) * C
-        if not self.L2_norm:            
-            length = torch.sum(Ad_reshape ** 2, dim=1)
-        else:
-            HW = Ad_reshape.shape[0]
-            length = torch.ones(HW).cuda()
-        distance = length.unsqueeze(1) - 2 * torch.matmul(Ad_reshape, Ad_reshape.transpose(0,1)) + length.unsqueeze(0)
-        match = torch.argsort(distance, dim=1, descending=False)
-        close_id = match[:, 1]
-        close_dis = distance[list(range(M)) , close_id]
-        tar = (close_dis > self.dis_th).float()
-        if torch.sum(tar) / As_reshape.shape[0] > self.kp_ratio:
-            return F.binary_cross_entropy(As_reshape, tar)
-        else:
-            nearst_ids = torch.argsort(close_dis, descending=True)
-            mini_points = int(As_reshape.shape[0] * self.kp_ratio)
-            nearst_ids = nearst_ids[:mini_points]
-            tar[nearst_ids] = 1.
-            return F.binary_cross_entropy(As_reshape, tar)
+        similarity = torch.matmul(Ad_reshape, Ad_reshape.transpose(0,1))
 
+        match = torch.argsort(similarity, dim=1, descending=False)
+        close_id = match[:, 1]
+        simi = similarity[list(range(M)) , close_id] + 1 # add 1 bias
+        prob = simi / simi.max()
+        if prob.min() > self.dis_th:
+            prob =torch.ones((prob.shape[0], )).cuda() * 1e-3
+        return F.binary_cross_entropy(As_reshape, prob)
 
     def usploss(self, As, Bs, mat, G):      
         reshape_As_k, reshape_Bs_k, d_k = self.get_point_pair(G, As, Bs)

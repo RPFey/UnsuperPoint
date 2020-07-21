@@ -1,7 +1,7 @@
 data:
     train_name: 'COCODataset'
     export_name: 'HPatchDataset'
-    truncate: 0.6
+    truncate: 0.01
     export_size: 320
     homographic:
         translation: 
@@ -14,12 +14,12 @@ data:
 
 
 MODEL:
-    name: 'UnsuperPoint'
+    name: 'ShortcutPoint'
     L2_norm: True
     OPTIMIZATION:
         name: 'adam'
         LR: 0.001
-        weight_decay: 0.00001
+        weight_decay: 0.0001
         decay_step_list: [0.6, 0.8]
         LR_decay: 0.1
         LR_clip: 0.000001
@@ -28,8 +28,8 @@ MODEL:
     LOSS:
         usp: 1
         uni_xy: 100
-        desc: 0.01
-        decorr: 0.06
+        desc: 10
+        decorr: 6
         des_key: 1
     dis_th: 0.8
     score_th: 0.5

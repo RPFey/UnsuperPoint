@@ -9,9 +9,9 @@ import torchvision
 import numpy as np
 import matplotlib.pyplot as plt
 
-names = ['usp', 'uni_xy', 'desc', 'decorr', 'des_key']
-colors = ['black', 'orange', 'red', 'red', 'blue']
-linestyles = ['-', '-', '-', '--', '-']
+names = ['usp', 'uni_xy', 'desc', 'decorr', 'des_key', 'peaky']
+colors = ['black', 'orange', 'red', 'red', 'blue', 'green']
+linestyles = ['-', '-', '-', '--', '-', '-']
 
 def build_optimizer(model, optim_config):
     if optim_config['name'] == 'adam':
@@ -60,7 +60,7 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
         pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
 
     disp_dict = {}
-    loss_step = np.zeros((5, 1))
+    loss_step = None
     for cur_it in range(total_it_each_epoch):
         try:
             img0, img1, mat = next(dataloader_iter)
@@ -93,7 +93,10 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
         optimizer.zero_grad()
 
         loss, loss_item = model(img0, img1, mat)
-        loss_step = np.concatenate([loss_step, loss_item[:, np.newaxis]], dim=1)
+        if loss_step is None:
+            loss_step = loss_item[:, np.newaxis]
+        else:
+            loss_step = np.concatenate([loss_step, loss_item[:, np.newaxis]], axis=1)
 
         loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg['GRAD_NORM_CLIP'])
@@ -164,7 +167,13 @@ def train_model(model, optimizer, train_loader, lr_scheduler, optim_cfg,
                 output_dir = ckpt_save_dir.parent / 'loss_step'
                 output_dir.mkdir(parents=True, exist_ok=True)
                 plt.figure()
-                for name, color, linestyle, loss in zip(names, colors, linestyles, loss_step):
+
+                num_loss = loss_step.shape[0]
+                names_ = names[:num_loss]
+                linestyles_ = linestyles[:num_loss]
+                colors_ = colors[:num_loss]
+
+                for name, color, linestyle, loss in zip(names_, colors_, linestyles_, loss_step):
                     plt.plot(np.arange(loss.shape[0]), loss, color=color, ls=linestyle, label=name)
                 plt.savefig(str(output_dir)+'/epoch %d.jpg'%(trained_epoch))
 

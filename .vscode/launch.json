@@ -26,7 +26,7 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "args":[
-                "--cfg_file","Unsuper/configs/UnsuperPoint_coco.yaml",
+                "--cfg_file","Unsuper/configs/ShortcutPoint_coco.yaml",
                 "--workers","1",
                 "--extra_tag", "test"
             ] 

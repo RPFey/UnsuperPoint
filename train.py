@@ -8,7 +8,7 @@ from Unsuper.config import cfg, log_config_to_file, cfg_from_list, cfg_from_yaml
 from Unsuper.utils import common_utils
 from Unsuper.dataset import build_dataloader
 from train_utils import build_optimizer, build_scheduler
-from Unsuper.model.Unsuper import UnSuperPoint
+from Unsuper.model import build_network
 from train_utils import train_model
 import torch.distributed as dist
 
@@ -99,7 +99,7 @@ def main():
         training=True
     )
 
-    model = UnSuperPoint(cfg['MODEL'], cfg['data']['IMAGE_SHAPE'])
+    model = build_network(cfg['MODEL'], cfg['data']['IMAGE_SHAPE'], False)
     if args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda()
