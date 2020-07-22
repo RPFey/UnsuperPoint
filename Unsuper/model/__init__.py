@@ -10,4 +10,6 @@ __all__ = {
 }
 
 def build_network(model_cfg, IMAGE_SHAPE, is_training):
-    return __all__[model_cfg['name']](model_cfg, IMAGE_SHAPE, is_training)
+    model = __all__[model_cfg['name']](model_cfg, IMAGE_SHAPE, is_training)
+    model.build_network()
+    return model

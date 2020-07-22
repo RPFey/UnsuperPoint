@@ -36,6 +36,7 @@ class UnSuperPoint(ModelTemplate):
         # export threshold
         self.score_th = model_config['score_th']
 
+    def build_network(self):
         self.cnn = nn.Sequential(
             nn.Conv2d(3,32,3,1,padding=1),
             nn.BatchNorm2d(32),
@@ -229,6 +230,8 @@ class UnSuperPoint(ModelTemplate):
         prob = simi / simi.max()
         if prob.min() > self.dis_th:
             prob =torch.ones((prob.shape[0], )).cuda() * 1e-3
+        else:
+            prob = prob.detach()
         return F.binary_cross_entropy(As_reshape, prob)
 
     def usploss(self, As, Bs, mat, G):      
