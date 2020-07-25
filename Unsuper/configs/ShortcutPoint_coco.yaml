@@ -1,7 +1,7 @@
 data:
     train_name: 'COCODataset'
     export_name: 'HPatchDataset'
-    truncate: 0.01
+    truncate: 0.6
     export_size: 320
     homographic:
         translation: 
@@ -28,9 +28,9 @@ MODEL:
     LOSS:
         usp: 1
         uni_xy: 100
-        desc: 10
-        decorr: 6
-        des_key: 1
+        desc: 20
+        decorr: -1
+        des_key: 2
     dis_th: 0.8
     score_th: 0.5
     downsample: 8

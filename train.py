@@ -8,7 +8,7 @@ from Unsuper.config import cfg, log_config_to_file, cfg_from_list, cfg_from_yaml
 from Unsuper.utils import common_utils
 from Unsuper.dataset import build_dataloader
 from train_utils import build_optimizer, build_scheduler
-from Unsuper.model import build_network
+from Unsuper.model import build_network, ModelTemplate
 from train_utils import train_model
 import torch.distributed as dist
 
@@ -123,6 +123,8 @@ def main():
                 ckpt_list[-1], to_cpu=dist, optimizer=optimizer, logger=logger
             )
             last_epoch = start_epoch + 1
+        elif not dist_train:
+            model.apply(ModelTemplate.init_weights)
 
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
     if dist_train:

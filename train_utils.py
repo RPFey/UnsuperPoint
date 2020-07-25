@@ -60,7 +60,6 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
         pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
 
     disp_dict = {}
-    loss_step = None
     for cur_it in range(total_it_each_epoch):
         try:
             img0, img1, mat = next(dataloader_iter)
@@ -93,10 +92,6 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
         optimizer.zero_grad()
 
         loss, loss_item = model(img0, img1, mat)
-        if loss_step is None:
-            loss_step = loss_item[:, np.newaxis]
-        else:
-            loss_step = np.concatenate([loss_step, loss_item[:, np.newaxis]], axis=1)
 
         loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg['GRAD_NORM_CLIP'])
@@ -115,10 +110,15 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
             if tb_log is not None:
                 tb_log.add_scalar('train_loss', loss, accumulated_iter)
                 tb_log.add_scalar('learning_rate', cur_lr, accumulated_iter)
+                tb_log.add_scalar('key_dist_loss', loss_item[0], accumulated_iter)
+                tb_log.add_scalar('Uni_xy', loss_item[1], accumulated_iter)
+                tb_log.add_scalar('desc_loss', loss_item[2], accumulated_iter)
+                tb_log.add_scalar('decoor_loss', loss_item[3], accumulated_iter)
+                tb_log.add_scalar('key_dist', loss_item[4], accumulated_iter)
     lr_scheduler.step()
     if rank == 0:
         pbar.close()
-    return accumulated_iter, loss_step[:, 1:]
+    return accumulated_iter
 
 
 def train_model(model, optimizer, train_loader, lr_scheduler, optim_cfg,
@@ -137,7 +137,7 @@ def train_model(model, optimizer, train_loader, lr_scheduler, optim_cfg,
                 cur_scheduler = lr_warmup_scheduler
             else:
                 cur_scheduler = lr_scheduler
-            accumulated_iter, loss_step = train_one_epoch(
+            accumulated_iter = train_one_epoch(
                 model, optimizer, train_loader,
                 lr_scheduler=cur_scheduler,
                 accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,
@@ -162,20 +162,6 @@ def train_model(model, optimizer, train_loader, lr_scheduler, optim_cfg,
                 save_checkpoint(
                     checkpoint_state(model, optimizer, trained_epoch, accumulated_iter), filename=ckpt_name,
                 )
-
-                # plot loss of each step in this epoch
-                output_dir = ckpt_save_dir.parent / 'loss_step'
-                output_dir.mkdir(parents=True, exist_ok=True)
-                plt.figure()
-
-                num_loss = loss_step.shape[0]
-                names_ = names[:num_loss]
-                linestyles_ = linestyles[:num_loss]
-                colors_ = colors[:num_loss]
-
-                for name, color, linestyle, loss in zip(names_, colors_, linestyles_, loss_step):
-                    plt.plot(np.arange(loss.shape[0]), loss, color=color, ls=linestyle, label=name)
-                plt.savefig(str(output_dir)+'/epoch %d.jpg'%(trained_epoch))
 
 def model_state_to_cpu(model_state):
     model_state_cpu = type(model_state)()  # ordered dict

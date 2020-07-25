@@ -52,8 +52,7 @@ class COCODataset(BaseDataset):
             mat.append(batch[2])
         src_img = torch.tensor(src_img, dtype=torch.float32) # B * H * W * C
         dst_img = torch.tensor(dst_img, dtype=torch.float32) # B * H * W * C
-        mat = torch.tensor(mat, dtype=torch.float32).squeeze() # B * 3 * 3
-        mat = mat
+        mat = torch.tensor(mat, dtype=torch.float32, requires_grad=False).squeeze() # B * 3 * 3
 
         return src_img.permute(0, 3, 1, 2), dst_img.permute(0, 3, 1, 2), mat
     

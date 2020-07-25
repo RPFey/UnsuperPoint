@@ -65,3 +65,13 @@ class ModelTemplate(nn.Module):
         logger.info('==> Done')
 
         return it, epoch
+
+    @staticmethod
+    def init_weights(model):
+        if type(model) == nn.Linear:
+            torch.nn.init.xavier_normal(model.weight)
+        elif type(model) == nn.Conv2d:
+            torch.nn.init.xavier_normal(model.weight)
+            model.bias.data.fill_(0.01)
+        elif type(model) == nn.BatchNorm2d:
+            torch.nn.init.normal(model.weight)

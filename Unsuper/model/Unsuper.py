@@ -28,8 +28,8 @@ class UnSuperPoint(ModelTemplate):
         self.des_key = model_config['LOSS']['des_key']
 
         # create mesh grid
-        x = torch.arange(IMAGE_SHAPE[1] // self.downsample)
-        y = torch.arange(IMAGE_SHAPE[0] // self.downsample)
+        x = torch.arange(IMAGE_SHAPE[1] // self.downsample, requires_grad=False)
+        y = torch.arange(IMAGE_SHAPE[0] // self.downsample, requires_grad=False)
         y, x = torch.meshgrid(y, x)
         self.cell = torch.stack([x,y], dim=0).cuda()
 
@@ -181,19 +181,14 @@ class UnSuperPoint(ModelTemplate):
             loss_item.append(0.)
         
         if self.desc > 0:
-            As_reshape = As.reshape(-1) > self.score_th
-            Bs_reshape = Bs.reshape(-1) > self.score_th
-            As_reshape = As_reshape.float().unsqueeze(1)
-            Bs_reshape = Bs_reshape.float().unsqueeze(0)
-            score_map = As_reshape.mul(Bs_reshape)
-            Descloss = self.descloss(Ad, Bd, G, score_map)
+            Descloss = self.desc * self.descloss(Ad, Bd, G)
             batch_loss += Descloss
             loss_item.append(Descloss.item())
         else:
             loss_item.append(0.)
         
         if self.decorr > 0:
-            Decorrloss = self.decorrloss(Ad, Bd)
+            Decorrloss = self.decorr * self.decorrloss(Ad, Bd)
             batch_loss += Decorrloss
             loss_item.append(Decorrloss.item())
         else:
@@ -202,7 +197,7 @@ class UnSuperPoint(ModelTemplate):
         if self.des_key > 0:
             des_key_A = self.desc_key_loss(As, Ad)
             des_key_B = self.desc_key_loss(Bs, Bd)
-            des_key_loss = des_key_A + des_key_B
+            des_key_loss = self.des_key * (des_key_A + des_key_B)
             batch_loss += des_key_loss
             loss_item.append(des_key_loss.item())
         else:
@@ -301,7 +296,7 @@ class UnSuperPoint(ModelTemplate):
         M = len(position)
         return torch.mean(torch.pow(position - (i-1) / (M-1),2))
 
-    def descloss(self, DA, DB, G, score_map):
+    def descloss(self, DA, DB, G):
         c, h, w = DA.shape
         # reshape_DA size = M, 256
         reshape_DA = DA.reshape((c,-1)).permute(1,0)
@@ -314,7 +309,7 @@ class UnSuperPoint(ModelTemplate):
         AB[C_] -= self.m_n
         Id = AB < 0
         AB[Id] = 0.0
-        return torch.mean(AB * score_map)
+        return torch.mean(AB)
 
     def decorrloss(self, DA, DB):
         c, h, w = DA.shape
@@ -334,8 +329,6 @@ class UnSuperPoint(ModelTemplate):
         F = reshape_D.shape[0]
         v_ = torch.mean(reshape_D, dim = 1, keepdim=True) # (C, 1) mean value of descriptor
         V_v = reshape_D - v_
-        molecular = torch.matmul(V_v, V_v.transpose(1,0))
-        V_v_2 = torch.sum(torch.pow(V_v, 2), dim=1, keepdim=True)
-        denominator = torch.sqrt(torch.matmul(V_v_2, V_v_2.transpose(1,0)))
-        one = torch.eye(F).cuda()
-        return torch.sum(molecular / denominator - one) / (F * (F-1))
+        molecular = torch.matmul(V_v, V_v.transpose(1,0)) + 1
+        two = 2 * torch.eye(F).cuda()
+        return torch.mean(molecular - one)

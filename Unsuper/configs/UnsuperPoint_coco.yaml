@@ -26,11 +26,11 @@ MODEL:
         LR_warmup: False
         GRAD_NORM_CLIP: 10
     LOSS:
-        usp: 1
+        usp: 1.0
         uni_xy: 100
-        desc: 0.01
-        decorr: 0.06
-        des_key: 1
+        desc: 0.001
+        decorr: 0.03
+        des_key: -1
     dis_th: 0.8
     score_th: 0.5
     downsample: 8

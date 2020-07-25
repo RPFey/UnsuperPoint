@@ -112,9 +112,9 @@ def get_position(Pmap, cell, downsample=1, flag=None, mat=None):
         r = torch.zeros_like(res)
         Denominator = res[0,:,:]*mat[2,0] + res[1,:,:]*mat[2,1] + mat[2,2]
         r[0,:,:] = (res[0,:,:]*mat[0,0] + 
-            res[1,:,:]*mat[0,1] +mat[0,2]) / Denominator 
+            res[1,:,:]*mat[0,1] + mat[0,2]) / Denominator
         r[1,:,:] = (res[0,:,:]*mat[1,0] + 
-            res[1,:,:]*mat[1,1] +mat[1,2]) / Denominator
+            res[1,:,:]*mat[1,1] + mat[1,2]) / Denominator
         return r
     else:
         return res
