@@ -6,17 +6,16 @@ from pathlib import Path
 import random
 
 from .base_dataset import BaseDataset
-from Unsuper.settings import DATA_PATH
 from ..utils.utils import resize_img, enhance
 
 
 class COCODataset(BaseDataset):
     default_config = {}
 
-    def _init_dataset(self):
+    def init_dataset(self):
         self.name = 'coco'
         if self.is_training:
-            base_path = Path(DATA_PATH, 'COCO/train2014/')
+            base_path = Path(self.config['train_path'], 'COCO/train2014/')
             image_paths = list(base_path.iterdir())
             image_paths = [str(p) for p in image_paths]
             np.random.shuffle(image_paths)
@@ -25,7 +24,7 @@ class COCODataset(BaseDataset):
                 image_paths = image_paths[:round(data_len*self.config['truncate'])]
             return len(image_paths), image_paths
         else:
-            base_path = Path(DATA_PATH, 'COCO/val2014/')
+            base_path = Path(self.config['train_path'], 'COCO/val2014/')
             image_paths = list(base_path.iterdir())
             test_files = [str(p) for p in image_paths][:self.config['export_size']]
             return self.config['export_size'], test_files

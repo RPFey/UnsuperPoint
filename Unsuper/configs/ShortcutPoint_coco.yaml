@@ -10,7 +10,7 @@ data:
         rotation: 15
         scale: 0.2
     perspective: 0.1
-    IMAGE_SHAPE: [240, 320]
+    IMAGE_SHAPE: [480, 640]
 
 
 MODEL:
@@ -19,18 +19,18 @@ MODEL:
     OPTIMIZATION:
         name: 'adam'
         LR: 0.001
-        weight_decay: 0.0001
-        decay_step_list: [0.6, 0.8]
+        weight_decay: 0.001
+        decay_step_list: [0.4, 0.6]
         LR_decay: 0.1
         LR_clip: 0.000001
         LR_warmup: False
         GRAD_NORM_CLIP: 10
     LOSS:
         usp: 1
-        uni_xy: 100
+        uni_xy: 10
         desc: 20
-        decorr: -1
-        des_key: 2
+        decorr: -2
+        des_key: -1
     dis_th: 0.8
     score_th: 0.5
     downsample: 8

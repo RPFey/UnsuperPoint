@@ -1,1 +1,1 @@
-python export.py --cfg_file Unsuper/configs/ShortcutPoint_coco.yaml --workers 4 --batch_size 16 --eval_all --extra_tag no_score
+python export.py --cfg_file Unsuper/configs/ShortcutPoint_coco.yaml --workers 4 --batch_size 16 --eval_all --extra_tag interpolate

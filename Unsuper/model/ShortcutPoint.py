@@ -80,10 +80,10 @@ class ShortcutPoint(UnSuperPoint):
         
         p = self.position(layer3_down)
         d = self.descriptor(layer3_down)
-        # desc = self.interpolate(p, d, h, w) # (B, C, H, W)
+        desc = self.interpolate(p, d, h, w) # (B, C, H, W)
         if self.L2_norm:
-            L2 = torch.norm(d, dim=1, p=2, keepdim=True)
-            desc = d / L2
+            L2 = torch.norm(d, dim=1, p=2, keepdim=True) + 1e-4
+            desc = desc / L2
         return p, desc
 
     def forward(self, img0, img1=None, mat=None):
@@ -137,8 +137,8 @@ class ShortcutPoint(UnSuperPoint):
             loss_item.append(0.)
 
         if self.uni_xy > 0:
-            Uni_xyloss = self.uni_xyloss(Ap, Bp)
-            batch_loss += self.uni_xy * Uni_xyloss
+            Uni_xyloss = self.uni_xy * (self.get_uni(Aw) + self.get_uni(Bw))
+            batch_loss +=  Uni_xyloss
             loss_item.append(Uni_xyloss.item())
         else:
             loss_item.append(0.)
@@ -170,6 +170,7 @@ class ShortcutPoint(UnSuperPoint):
             loss_item.append(0.)
 
         return batch_loss, np.array(loss_item)
+
 
     def get_weight(self, D):
         """
@@ -207,7 +208,13 @@ class ShortcutPoint(UnSuperPoint):
         AB[C_] -= self.m_n
         Id = AB < 0
         AB[Id] = 0.0
-        return torch.mean(AB*score_map)
+        return torch.mean(AB * score_map)
+        
+    def get_uni(self, position):
+        i = torch.argsort(position) + 1
+        i = i.to(torch.float32)
+        M = len(position)
+        return torch.mean(torch.pow(position - (i-1) / (M-1),2))
 
     def desc_key_loss(self, As):
         '''

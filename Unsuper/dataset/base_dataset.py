@@ -17,7 +17,7 @@ class BaseDataset(torch_data.Dataset):
     """
     split_names = ['training', 'validation', 'test']
 
-    def _init_dataset(self, config):
+    def init_dataset(self):
         """Prepare the dataset for reading.
 
         This method should configure the dataset for later fetching through `_get_data`,
@@ -47,4 +47,4 @@ class BaseDataset(torch_data.Dataset):
         self.len = 0 # length of the dataset
         self.config = dict_update(getattr(self, 'default_config', {}), config)
         self.is_training = is_training # bool 
-        self.len, self.train_files =  self._init_dataset()  # image files & names
+        self.len, self.train_files =  self.init_dataset()  # image files & names

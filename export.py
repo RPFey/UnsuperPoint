@@ -72,7 +72,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, re
 
             cv2.imwrite(os.path.join(str(data_dir), img_name+suffix), img0[j])
             s1 = pred_dict[j]['s1']
-            loc = np.where(s1 > 0.5)
+            loc = np.where(s1 > 0.3)
             p1 = pred_dict[j]['p1'][loc]
             d1 = pred_dict[j]['d1'][loc]
             s1 = s1[loc]

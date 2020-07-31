@@ -48,3 +48,22 @@ def build_dataloader(dataset_cfg, batch_size, dist, root_path=None, workers=4,
         )
 
     return dataset, dataloader, sampler
+
+
+def build_LightningDataloader(dataset_cfg, args, training=True):
+    if training:
+        dataset = __all__[dataset_cfg['train_name']](
+            dataset_cfg,
+            training
+        )
+
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, num_workers=args.num_workers,
+                                collate_fn=dataset.collate_batch)
+    else:
+        dataset = __all__[dataset_cfg['export_name']](
+            dataset_cfg,
+            training
+        )
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, num_workers=args.num_workers,
+                                collate_fn=dataset.test_collate_batch)
+    return dataset, dataloader

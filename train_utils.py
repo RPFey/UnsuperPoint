@@ -94,11 +94,11 @@ def train_one_epoch(model, optimizer, train_loader, lr_scheduler, accumulated_it
         loss, loss_item = model(img0, img1, mat)
 
         loss.backward()
-        clip_grad_norm_(model.parameters(), optim_cfg['GRAD_NORM_CLIP'])
+        total_norm = clip_grad_norm_(model.parameters(), optim_cfg['GRAD_NORM_CLIP'])
         optimizer.step()
         
         accumulated_iter += 1
-        disp_dict.update({'loss': loss.item(), 'lr': cur_lr})
+        disp_dict.update({'loss': loss.item(), 'lr': cur_lr, 'grad_norm':total_norm})
 
         # log to console and tensorboard
         if rank == 0:

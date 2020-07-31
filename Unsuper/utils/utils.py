@@ -83,7 +83,7 @@ def enhance(img, config):
                           [               0, IMAGE_SHAPE[0]-1],
                           [IMAGE_SHAPE[1]-1, IMAGE_SHAPE[0]-1]], dtype = np.float32)  # 圖片的四個頂點
 
-    dst_point = get_dst_point(config['perspective'], IMAGE_SHAPE)
+    dst_point = get_dst_point(config['homographic']['perspective'], IMAGE_SHAPE)
     center = (IMAGE_SHAPE[1]/2, IMAGE_SHAPE[0]/2)
     rot = random.randint(-2,2)*config['homographic']['rotation'] + random.randint(0,15)
     scale = 1.2 - config['homographic']['scale']*random.random()
